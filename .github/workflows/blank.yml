@@ -1,0 +1,58 @@
+name: Build and Package UnlockerIsland
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build-and-commit:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Target Repository
+        uses: actions/checkout@v4
+        with:
+          repository: 'FufuLauncher/FufuLauncher.UnlockerIsland'
+          # token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build C++ Project (v145)
+        run: |
+          msbuild Genshin.Fps.UnlockerIsland.sln /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v145
+
+      - name: Fetch config.ini
+        run: |
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/FufuLauncher/FufuLauncher/master/FufuLauncher/Plugins/FuFuPlugin/config.ini" -OutFile "config.ini"
+
+      - name: Package Artifacts
+        run: |
+          New-Item -ItemType Directory -Force -Path "Staging"
+          
+          Get-ChildItem -Path . -Filter "FufuLauncher.UnlockerIsland.dll" -Recurse | Where-Object { $_.FullName -match "Release" } | Select-Object -First 1 | Copy-Item -Destination "Staging\FufuLauncher.UnlockerIsland.dll"
+          
+          Copy-Item -Path "config.ini" -Destination "Staging\config.ini"
+          
+          Compress-Archive -Path "Staging\*" -DestinationPath "FuFuPlugin.zip" -Force
+
+      - name: Duplicate Zip Files
+        run: |
+          Copy-Item -Path "FuFuPlugin.zip" -Destination "FuFuPlugin.vmp.zip"
+          Copy-Item -Path "FuFuPlugin.zip" -Destination "FuFuPlugin.vmp2.zip"
+          Copy-Item -Path "FuFuPlugin.zip" -Destination "FuFuPlugin-old.zip"
+
+      - name: Commit and Push to Main Branch
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add FuFuPlugin.zip FuFuPlugin.vmp.zip FuFuPlugin.vmp2.zip FuFuPlugin-old.zip
+          git commit -m "Auto build and package plugin zip files"
+          
+          git push origin HEAD
